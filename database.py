@@ -70,3 +70,32 @@ class Database:
     def remover_apostas(self, match_id):
         """Remove todas as apostas de uma partida."""
         self.sb.table("apostas").delete().eq("match_id", match_id).execute()
+
+    def registrar_partida(self, time1: str, time2: str):
+        """Registra uma nova partida no banco de dados"""
+        partida = self.sb.table("partidas").insert({
+            "time1": time1,
+            "time2": time2,
+            "finalizada": False,
+            "vencedor": None
+        }).execute()
+        return partida.data[0]["id"]
+
+    def finalizar_partida(self, match_id: int, vencedor: str):
+        """Marca uma partida como finalizada"""
+        self.sb.table("partidas").update({
+            "finalizada": True,
+            "vencedor": vencedor
+        }).eq("id", match_id).execute()
+
+    def get_partidas_ativas(self):
+        """Retorna todas as partidas não finalizadas"""
+        return self.sb.table("partidas").select("*").eq("finalizada", False).execute().data
+
+    def get_historico_partidas(self, limit=10):
+        """Retorna o histórico de partidas finalizadas"""
+        return self.sb.table("partidas").select("*").eq("finalizada", True).order("id", desc=True).limit(limit).execute().data
+
+    def get_minhas_apostas(self, user_id: int):
+        """Retorna todas as apostas de um usuário"""
+        return self.sb.table("apostas").select("*, partidas(time1, time2)").eq("user_id", user_id).execute().data
