@@ -45,12 +45,53 @@ async def registrar(ctx):
 @bot.command()
 async def saldo(ctx):
     user_id = ctx.author.id
-    saldo = sb.get_saldo(user_id)
-    if saldo is None:
+    user = ctx.author
+    
+    saldo_atual = sb.get_saldo(user_id)
+    if saldo_atual is None:
         await ctx.send("Você não está registrado. Use !registrar primeiro.")
         return
     
-    await ctx.send(f"Seu saldo atual: {saldo} moedas")
+    stats = sb.get_estatisticas_apostas(user_id)
+    total_apostas = stats['total_apostas']
+    vitorias = stats['apostas_vencedoras']
+    porcentagem = (vitorias / total_apostas * 100) if total_apostas > 0 else 0
+    
+    embed = nextcord.Embed(
+        title=f"💰 Perfil de {user.display_name}",
+        color=0x00ff00
+    )
+    
+    embed.set_thumbnail(url=user.display_avatar.url)
+    
+    embed.add_field(
+        name="Saldo Atual",
+        value=f"🪙 {saldo_atual} moedas",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="Total Apostado",
+        value=f"🎰 {stats['total_apostado']} moedas",
+        inline=True
+    )
+    
+    barra_length = 10
+    preenchido = round(porcentagem / 100 * barra_length)
+    barra = "🟩" * preenchido + "⬛" * (barra_length - preenchido)
+    
+    embed.add_field(
+        name="Desempenho",
+        value=(
+            f"📊 Apostas: {total_apostas}\n"
+            f"✅ Vitórias: {vitorias}\n"
+            f"📈 Acertos: {porcentagem:.1f}%\n"
+            f"{barra}"
+        ),
+        inline=False
+    )
+    embed.set_footer(text=f"ID: {user_id} • Use !apostar para aumentar seu saldo!")
+    await ctx.send(embed=embed)
 
 @bot.command()
 async def apostar(ctx, time: str, valor: int):
@@ -322,6 +363,7 @@ async def rank(ctx, limit: int = 10):
     
     embed.set_footer(text=f"Seu saldo: {sb.get_saldo(ctx.author.id)} moedas | !saldo para ver detalhes")
     await ctx.send(embed=embed)
+
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 

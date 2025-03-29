@@ -103,3 +103,27 @@ class Database:
     def get_ranking(self, limit=10):
         """Retorna os usuários com maior saldo"""
         return self.sb.table("usuarios").select("id, nome, saldo").order("saldo", desc=True).limit(limit).execute().data
+    
+    def get_estatisticas_apostas(self, user_id: int):
+        """Versão simplificada que evita o erro"""
+        # 1. Total de apostas (não muda)
+        total_apostas = self.sb.table("apostas").select("id", count="exact").eq("user_id", user_id).execute().count
+        
+        # 2. Valor total apostado (não muda)
+        valor_apostado = self.sb.table("apostas").select("valor").eq("user_id", user_id).execute()
+        total_apostado = sum(aposta['valor'] for aposta in valor_apostado.data) if valor_apostado.data else 0
+        
+        # 3. Apostas vencedoras (nova consulta segura)
+        apostas = self.sb.table("apostas").select("match_id, time").eq("user_id", user_id).execute().data
+        vitorias = 0
+        
+        for aposta in apostas:
+            partida = self.sb.table("partidas").select("vencedor, finalizada").eq("id", aposta["match_id"]).execute().data
+            if partida and partida[0]["finalizada"] and partida[0]["vencedor"] == aposta["time"]:
+                vitorias += 1
+        
+        return {
+            'total_apostas': total_apostas,
+            'apostas_vencedoras': vitorias,
+            'total_apostado': total_apostado
+        }
