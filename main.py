@@ -141,23 +141,26 @@ async def comandos(ctx):
         value="Mostra o histórico de partidas finalizadas (padrão: 5)",
         inline=False
     )
+
+    help_embed.add_field(
+        name="!rank [limite]",
+        value="Mostra o ranking dos usuários com maior saldo (padrão: 10, máximo: 20)",
+        inline=False
+    )
     
     await ctx.send(embed=help_embed)
 
 @bot.command()
 async def iniciar_partida(ctx, time1: str, time2: str):
     if ctx.author.guild_permissions.administrator:
-        # Verificar nomes únicos em partidas ativas
         partidas_ativas = sb.get_partidas_ativas()
         for partida in partidas_ativas:
             if time1 in [partida['time1'], partida['time2']] or time2 in [partida['time1'], partida['time2']]:
                 await ctx.send(f"Erro: Time '{time1}' ou '{time2}' já está em uma partida ativa!")
                 return
         
-        # Registrar no Supabase
         match_id = sb.registrar_partida(time1, time2)
         
-        # Manter no dicionário local também
         matches[match_id] = {
             'time1': time1,
             'time2': time2,
@@ -181,6 +184,8 @@ async def finalizar_partida(ctx, match_id: int, vencedor: str):
             return
         
         sb.finalizar_partida(match_id, vencedor)
+        matches[match_id]['finalizado'] = True
+        matches[match_id]['vencedor'] = vencedor 
         
         apostas_vencedoras = sb.get_apostas_vencedoras(match_id, vencedor)
         
@@ -190,8 +195,6 @@ async def finalizar_partida(ctx, match_id: int, vencedor: str):
             multiplicador = aposta['multiplicador']
             ganho = int(valor * multiplicador)
             sb.atualizar_saldo(user_id, sb.get_saldo(user_id) + ganho)
-        
-        matches[match_id]['finalizado'] = True
         
         await ctx.send(f"O time {vencedor} venceu a partida {match_id}! Pagamentos realizados.")
     else:
@@ -241,7 +244,15 @@ async def minhas_apostas(ctx):
     
     for aposta in apostas:
         partida_info = aposta.get("partidas", {})
-        status = "✅ Ganha" if aposta["time"] == partida_info.get("vencedor") else "❌ Perdida" if partida_info.get("finalizada") else "🔄 Em andamento"
+        finalizada = partida_info.get("finalizada", False)
+        vencedor = partida_info.get("vencedor")
+        
+        if not finalizada:
+            status = "🔄 Em andamento"
+        elif aposta["time"] == vencedor:
+            status = "✅ Ganha"
+        else:
+            status = "❌ Perdida"
         
         embed.add_field(
             name=f"Partida {aposta['match_id']}: {partida_info.get('time1', '?')} vs {partida_info.get('time2', '?')}",
@@ -273,6 +284,44 @@ async def historico(ctx, limit: int = 5):
     
     await ctx.send(embed=embed)
 
+@bot.command()
+async def rank(ctx, limit: int = 10):
+    if limit > 20 or limit < 1:
+        await ctx.send("Por favor, especifique um limite entre 1 e 20.")
+        return
+
+    ranking = sb.get_ranking(limit)
+    
+    if not ranking:
+        await ctx.send("Nenhum usuário encontrado!")
+        return
+    
+    embed = nextcord.Embed(
+        title=f"🏆 Ranking Top {len(ranking)}",
+        description="Usuários com maior saldo",
+        color=0xffd700
+    )
+    
+    medalhas = ["🥇", "🥈", "🥉"] + ["🔹"] * 7 
+    
+    for i, usuario in enumerate(ranking):
+        nome = usuario['nome']
+        saldo = usuario['saldo']
+        posicao = i + 1
+        
+        if i < len(medalhas):
+            prefixo = medalhas[i]
+        else:
+            prefixo = f"{posicao}."
+        
+        embed.add_field(
+            name=f"{prefixo} {nome}",
+            value=f"{saldo} moedas",
+            inline=False
+        )
+    
+    embed.set_footer(text=f"Seu saldo: {sb.get_saldo(ctx.author.id)} moedas | !saldo para ver detalhes")
+    await ctx.send(embed=embed)
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 

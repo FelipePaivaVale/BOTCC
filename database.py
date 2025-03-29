@@ -97,5 +97,9 @@ class Database:
         return self.sb.table("partidas").select("*").eq("finalizada", True).order("id", desc=True).limit(limit).execute().data
 
     def get_minhas_apostas(self, user_id: int):
-        """Retorna todas as apostas de um usuário"""
-        return self.sb.table("apostas").select("*, partidas(time1, time2)").eq("user_id", user_id).execute().data
+        """Retorna todas as apostas de um usuário com status correto"""
+        return self.sb.table("apostas").select( "*, partidas(time1, time2, finalizada, vencedor)").eq("user_id", user_id).execute().data
+    
+    def get_ranking(self, limit=10):
+        """Retorna os usuários com maior saldo"""
+        return self.sb.table("usuarios").select("id, nome, saldo").order("saldo", desc=True).limit(limit).execute().data
