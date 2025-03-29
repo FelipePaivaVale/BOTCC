@@ -5,38 +5,6 @@ import asyncio
 import os
 from dotenv import load_dotenv
 
-class OddsConverter:
-    @staticmethod
-    def decimal_to_fractional(decimal_odds):
-        numerator = round((decimal_odds - 1) * 100)
-        denominator = 100
-        return f"{numerator}/{denominator}"
-
-    @staticmethod
-    def decimal_to_american(decimal_odds):
-        if decimal_odds >= 2:
-            return f"+{round((decimal_odds - 1) * 100)}"
-        else:
-            return f"-{round(100 / (decimal_odds - 1))}"
-
-    @staticmethod
-    def american_to_decimal(american_odds):
-        if american_odds > 0:
-            return round(1 + (american_odds / 100), 2)
-        else:
-            return round(1 + (100 / abs(american_odds)), 2)
-
-    @staticmethod
-    def implied_probability(decimal_odds):
-        return round(1 / decimal_odds * 100, 2)
-
-    @staticmethod
-    def adjust_odds_for_margin(odds_list):
-        probabilities = [1 / odd for odd in odds_list]
-        total_prob = sum(probabilities)
-        adjusted_odds = [round(1 / (prob / total_prob), 2) for prob in probabilities]
-        return adjusted_odds
-
 intents = nextcord.Intents.default()
 intents.message_content = True
 sb = Database()
@@ -47,6 +15,22 @@ matches = {}
 @bot.event
 async def on_ready():
     print(f'Bot conectado como {bot.user}')
+
+def calcular_odds_justas(total_time, total_oponente):
+    """
+    Calcula odds P2P justas (sem margem da casa).
+    Retorna 2.0 quando equilibrado e proporcional quando não.
+    """
+    total_apostado = total_time + total_oponente
+    
+    if total_time == 0 and total_oponente == 0:
+        return 1.8  # Valor inicial justo (50%-50%)
+    
+    if total_time == 0:
+        return float('inf')  # Retorna infinito se não há apostas no time
+    
+    odd = total_apostado / total_time
+    return max(1.01, round(odd, 2))  # Mínimo de 1.01x
 
 @bot.command()
 async def registrar(ctx):
@@ -72,9 +56,19 @@ async def saldo(ctx):
 @bot.command()
 async def apostar(ctx, match_id: int, time: str, valor: int):
     user_id = ctx.author.id
-
+    
+    match_id = None
+    for id, match in matches.items():
+        if not match['finalizado']:
+            match_id = id
+            break
+    
     if match_id not in matches or matches[match_id]['finalizado']:
-        await ctx.send("Partida não encontrada ou já finalizada!")
+        ativas = [str(id) for id, m in matches.items() if not m['finalizado']]
+        if ativas:
+            await ctx.send(f"Partida inválida! Partidas ativas: {', '.join(ativas)}")
+        else:
+            await ctx.send("Não há partidas ativas no momento!")
         return
 
     if time not in [matches[match_id]['time1'], matches[match_id]['time2']]:
@@ -89,13 +83,12 @@ async def apostar(ctx, match_id: int, time: str, valor: int):
     if saldo_atual < valor:
         await ctx.send("Saldo insuficiente!")
         return
-
-    total_apostado = sum(sum(apostas.values()) for apostas in matches[match_id]['apostas'].values())
+    
     total_time1 = sum(matches[match_id]['apostas'][matches[match_id]['time1']].values()) if matches[match_id]['apostas'][matches[match_id]['time1']] else 0
     total_time2 = sum(matches[match_id]['apostas'][matches[match_id]['time2']].values()) if matches[match_id]['apostas'][matches[match_id]['time2']] else 0
 
-    odds_time1 = (total_apostado / total_time1) if total_time1 > 0 else 1
-    odds_time2 = (total_apostado / total_time2) if total_time2 > 0 else 1
+    odds_time1 = calcular_odds_justas(total_time1, total_time2)
+    odds_time2 = calcular_odds_justas(total_time2, total_time1)
     multiplicador = odds_time1 if time == matches[match_id]['time1'] else odds_time2
 
     sb.atualizar_saldo(user_id, saldo_atual - valor)
@@ -107,8 +100,61 @@ async def apostar(ctx, match_id: int, time: str, valor: int):
     await ctx.send(f"Aposta de {valor} moedas registrada no {time}! Multiplicador: {round(multiplicador, 2)}x")
 
 @bot.command()
+async def comandos(ctx):
+    help_embed = nextcord.Embed(
+        title="Ajuda do Bot de Apostas",
+        description="Lista de todos os comandos disponíveis",
+        color=0x00ff00
+    )
+    
+    help_embed.add_field(
+        name="!registrar",
+        value="Registra um novo usuário no sistema",
+        inline=False
+    )
+    
+    help_embed.add_field(
+        name="!saldo",
+        value="Mostra seu saldo atual",
+        inline=False
+    )
+    
+    help_embed.add_field(
+        name="!apostar <time> <valor>",
+        value="Aposta em um time na partida ativa",
+        inline=False
+    )
+    
+    help_embed.add_field(
+        name="!apostar <ID_partida> <time> <valor>",
+        value="Aposta em um time da partida especificada\nUse !odds para ver IDs das partidas",
+        inline=False
+    )
+    
+    help_embed.add_field(
+        name="!odds",
+        value="Mostra as odds de todas as partidas ativas",
+        inline=False
+    )
+    
+    help_embed.add_field(
+        name="!finalizar_partida <vencedor>",
+        value="(Admin) Finaliza a partida ativa e paga os vencedores",
+        inline=False
+    )
+    
+    await ctx.send(embed=help_embed)
+
+@bot.command()
 async def iniciar_partida(ctx, time1: str, time2: str):
     if ctx.author.guild_permissions.administrator:
+        # Verificar se times já estão em partidas ativas
+        for match in matches.values():
+            if not match['finalizado']:
+                if time1 in [match['time1'], match['time2']] or time2 in [match['time1'], match['time2']]:
+                    await ctx.send(f"Erro: O time '{time1}' ou '{time2}' já está em uma partida ativa!")
+                    return
+        
         match_id = len(matches) + 1
         matches[match_id] = {
             'time1': time1,
@@ -119,7 +165,6 @@ async def iniciar_partida(ctx, time1: str, time2: str):
         await ctx.send(f"Partida {match_id} iniciada! Times: {time1} vs {time2}")
     else:
         await ctx.send("Você não tem permissão para iniciar partidas.")
-
 @bot.command()
 async def finalizar_partida(ctx, match_id: int, vencedor: str):
     if ctx.author.guild_permissions.administrator:
@@ -149,22 +194,32 @@ async def finalizar_partida(ctx, match_id: int, vencedor: str):
         await ctx.send("Você não tem permissão para finalizar partidas.")
 
 @bot.command()
-async def odds(ctx, match_id: int):
-    if match_id not in matches or matches[match_id]['finalizado']:
-        await ctx.send("Partida não encontrada ou já finalizada!")
+async def odds(ctx):
+    partidas_ativas = {id: m for id, m in matches.items() if not m['finalizado']}
+    
+    if not partidas_ativas:
+        await ctx.send("Não há partidas ativas no momento!")
         return
-
-    match = matches[match_id]
-    total_apostado = sum(sum(apostas.values()) for apostas in match['apostas'].values())
-    total_time1 = sum(match['apostas'][match['time1']].values()) if match['apostas'][match['time1']] else 0
-    total_time2 = sum(match['apostas'][match['time2']].values()) if match['apostas'][match['time2']] else 0
-
-    odds_time1 = (total_apostado / total_time1) if total_time1 > 0 else 1
-    odds_time2 = (total_apostado / total_time2) if total_time2 > 0 else 1
-
-    await ctx.send(f"Odds para a partida {match_id}:\n"
-                   f"{match['time1']}: {round(odds_time1, 2)}\n"
-                   f"{match['time2']}: {round(odds_time2, 2)}")
+    
+    embed = nextcord.Embed(
+        title="Odds das Partidas Ativas",
+        color=0x00ff00
+    )
+    
+    for match_id, match in partidas_ativas.items():
+        total_time1 = sum(match['apostas'][match['time1']].values()) if match['apostas'][match['time1']] else 0
+        total_time2 = sum(match['apostas'][match['time2']].values()) if match['apostas'][match['time2']] else 0
+        
+        odds_time1 = calcular_odds_justas(total_time1, total_time2)
+        odds_time2 = calcular_odds_justas(total_time2, total_time1)
+        
+        embed.add_field(
+            name=f"Partida {match_id}: {match['time1']} vs {match['time2']}",
+            value=f"{match['time1']}: {odds_time1}x\n{match['time2']}: {odds_time2}x",
+            inline=False
+        )
+    
+    await ctx.send(embed=embed)
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
