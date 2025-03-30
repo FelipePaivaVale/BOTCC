@@ -1,3 +1,4 @@
+import datetime
 import nextcord
 from nextcord.ext import commands
 from database import Database
@@ -201,17 +202,46 @@ async def iniciar_partida(ctx, time1: str, time2: str):
                 return
         
         match_id = sb.registrar_partida(time1, time2)
-        
         matches[match_id] = {
             'time1': time1,
             'time2': time2,
             'apostas': {time1: {}, time2: {}},
             'finalizado': False
         }
+
+        embed = nextcord.Embed(
+            title=" NOVA PARTIDA INICIADA! ",
+            description=f"**Partida ID: {match_id}**",
+            color=0x00ff00 
+        )
         
-        await ctx.send(f"Partida {match_id} iniciada! Times: {time1} vs {time2}")
+        embed.add_field(
+            name="Times",
+            value=f"🏆 **{time1}** vs **{time2}**",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="Como apostar",
+            value=f"Use `!apostar {match_id} [time] [valor]`",
+            inline=False
+        )
+        
+        embed.set_footer(
+            text=f"Partida criada por {ctx.author.display_name}",
+            icon_url=ctx.author.display_avatar.url
+        )
+        
+        embed.timestamp = datetime.datetime.now()
+        
+        await ctx.send(embed=embed)
     else:
-        await ctx.send("Você não tem permissão para iniciar partidas.")
+        embed = nextcord.Embed(
+            title="❌ Acesso Negado",
+            description="Você precisa ser administrador para iniciar partidas!",
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
 
 @bot.command()
 async def finalizar_partida(ctx, match_id: int, vencedor: str):
