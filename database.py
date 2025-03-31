@@ -174,3 +174,15 @@ class Database:
         except Exception as e:
             print(f"Erro ao verificar resgate: {e}")
             return False
+        
+    def set_command_channel(self, guild_id: int, channel_id: int):
+        """Define o canal permitido para comandos em um servidor"""
+        self.sb.table("server_config").upsert({
+            "guild_id": guild_id,
+            "command_channel": channel_id
+        }).execute()
+
+    def get_command_channel(self, guild_id: int):
+        """Obtém o canal configurado para comandos"""
+        config = self.sb.table("server_config").select("command_channel").eq("guild_id", guild_id).execute()
+        return config.data[0]["command_channel"] if config.data else None

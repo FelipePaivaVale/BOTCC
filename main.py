@@ -442,6 +442,46 @@ async def resgatar(ctx):
     embed.set_footer(text="Volte amanhã para mais!")
     
     await ctx.send(embed=embed)
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setcommandchannel(ctx):
+    """Define o canal atual como exclusivo para comandos"""
+    sb.set_command_channel(ctx.guild.id, ctx.channel.id)
+    
+    embed = nextcord.Embed(
+        title="✅ Canal Configurado",
+        description=f"Todos os comandos agora devem ser usados em {ctx.channel.mention}",
+        color=0x00ff00
+    )
+    await ctx.send(embed=embed)
+
+@bot.check
+async def channel_check(ctx):
+    if not ctx.guild:
+        return True
+        
+    allowed_channel = sb.get_command_channel(ctx.guild.id)
+    
+    if not allowed_channel:
+        return True
+    return ctx.channel.id == allowed_channel
+
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CheckFailure):
+        allowed_channel = sb.get_command_channel(ctx.guild.id)
+        if allowed_channel:
+            channel = bot.get_channel(allowed_channel)
+            embed = nextcord.Embed(
+                title="🚫 Canal Incorreto",
+                description=f"Use comandos apenas em {channel.mention}",
+                color=0xff0000
+            )
+            await ctx.send(embed=embed, delete_after=10)
+            await ctx.message.delete()
+        return
+    
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
