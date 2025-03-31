@@ -189,6 +189,12 @@ async def comandos(ctx):
         value="Mostra o ranking dos usuários com maior saldo (padrão: 10, máximo: 20)",
         inline=False
     )
+
+    help_embed.add_field(
+        name="!resgatar",
+        value="Resgate 1000 moedas diárias grátis",
+        inline=False
+    )
     
     await ctx.send(embed=help_embed)
 
@@ -273,30 +279,39 @@ async def finalizar_partida(ctx, match_id: int, vencedor: str):
 
 @bot.command()
 async def odds(ctx):
-    partidas_ativas = {id: m for id, m in matches.items() if not m['finalizado']}
+    partidas_ativas = sb.get_partidas_ativas()
     
     if not partidas_ativas:
         await ctx.send("Não há partidas ativas no momento!")
         return
     
     embed = nextcord.Embed(
-        title="Odds das Partidas Ativas",
+        title="📊 Odds das Partidas Ativas",
         color=0x00ff00
     )
     
-    for match_id, match in partidas_ativas.items():
-        total_time1 = sum(match['apostas'][match['time1']].values()) if match['apostas'][match['time1']] else 0
-        total_time2 = sum(match['apostas'][match['time2']].values()) if match['apostas'][match['time2']] else 0
+    for partida in partidas_ativas:
+        match_id = partida['id']
+        
+        apostas = sb.sb.table("apostas").select("time, valor").eq("match_id", match_id).execute().data
+        
+        total_time1 = sum(aposta['valor'] for aposta in apostas if aposta['time'] == partida['time1'])
+        total_time2 = sum(aposta['valor'] for aposta in apostas if aposta['time'] == partida['time2'])
         
         odds_time1 = calcular_odds_justas(total_time1, total_time2)
         odds_time2 = calcular_odds_justas(total_time2, total_time1)
         
         embed.add_field(
-            name=f"Partida {match_id}: {match['time1']} vs {match['time2']}",
-            value=f"{match['time1']}: {odds_time1}x\n{match['time2']}: {odds_time2}x",
+            name=f"Partida {match_id}: {partida['time1']} vs {partida['time2']}",
+            value=(
+                f"🔵 {partida['time1']}: {odds_time1}x\n"
+                f"🔴 {partida['time2']}: {odds_time2}x\n"
+                f"💸 Total apostado: {total_time1 + total_time2} moedas"
+            ),
             inline=False
         )
     
+    embed.set_footer(text="Use !apostar [time] [valor] para participar")
     await ctx.send(embed=embed)
 
 @bot.command()
@@ -394,6 +409,39 @@ async def rank(ctx, limit: int = 10):
     embed.set_footer(text=f"Seu saldo: {sb.get_saldo(ctx.author.id)} moedas | !saldo para ver detalhes")
     await ctx.send(embed=embed)
 
+@bot.command()
+async def resgatar(ctx):
+    user_id = ctx.author.id
+    
+    if not sb.usuario_existe(user_id):
+        await ctx.send("Você precisa se registrar primeiro com !registrar")
+        return
+    
+    if not sb.pode_resgatar_hoje(user_id):
+        embed = nextcord.Embed(
+            title="⏳ Resgate Diário",
+            description="Você já resgatou suas moedas hoje!",
+            color=0xffcc00
+        )
+        embed.set_footer(text="Volte amanhã para resgatar novamente")
+        await ctx.send(embed=embed)
+        return
+    
+    sb.registrar_resgate_diario(user_id)
+    
+    embed = nextcord.Embed(
+        title="🎉 Resgate Diário Concluído!",
+        description=f"{ctx.author.display_name} resgatou 1000 moedas!",
+        color=0x00ff00
+    )
+    embed.add_field(
+        name="Saldo Atual",
+        value=f"🪙 {sb.get_saldo(user_id)} moedas",
+        inline=False
+    )
+    embed.set_footer(text="Volte amanhã para mais!")
+    
+    await ctx.send(embed=embed)
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 

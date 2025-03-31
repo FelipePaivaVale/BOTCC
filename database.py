@@ -1,3 +1,4 @@
+import datetime
 import supabase
 from config import SUPABASE_URL, SUPABASE_KEY
 
@@ -127,3 +128,49 @@ class Database:
             'apostas_vencedoras': vitorias,
             'total_apostado': total_apostado
         }
+    
+    def registrar_resgate_diario(self, user_id: int):
+        """Registra o resgate diário e atualiza o saldo"""
+        try:
+            # Verifica se já existe registro
+            resgate = self.sb.table("resgates").select("*").eq("user_id", user_id).execute()
+            
+            if resgate.data:
+                # Atualiza registro existente
+                self.sb.table("resgates").update({
+                    "ultimo_resgate": datetime.datetime.now().isoformat(),
+                    "total_resgatado": resgate.data[0]["total_resgatado"] + 1000
+                }).eq("user_id", user_id).execute()
+            else:
+                # Cria novo registro
+                self.sb.table("resgates").insert({
+                    "user_id": user_id,
+                    "ultimo_resgate": datetime.datetime.now().isoformat(),
+                    "total_resgatado": 1000
+                }).execute()
+            
+            # Atualiza saldo do usuário
+            saldo_atual = self.get_saldo(user_id)
+            self.sb.table("usuarios").update({
+                "saldo": saldo_atual + 1000
+            }).eq("id", user_id).execute()
+            
+            return True
+        except Exception as e:
+            print(f"Erro ao registrar resgate: {e}")
+            return False
+    
+    def pode_resgatar_hoje(self, user_id: int):
+        """Verifica se o usuário já resgatou hoje"""
+        try:
+            resgate = self.sb.table("resgates").select("ultimo_resgate").eq("user_id", user_id).execute()
+            
+            if not resgate.data:
+                return True
+                
+            ultimo_resgate_str = resgate.data[0]["ultimo_resgate"]
+            ultimo_resgate = datetime.datetime.fromisoformat(ultimo_resgate_str.replace("Z", "+00:00"))
+            return ultimo_resgate.date() < datetime.datetime.now().date()
+        except Exception as e:
+            print(f"Erro ao verificar resgate: {e}")
+            return False
