@@ -51,6 +51,7 @@ def calcular_odds_justas(total_time, total_oponente):
         return 2.0
     
     odd = total_apostado / total_time
+    print("calculando odd", odd)
     return max(1.1, round(odd, 2))
 
 @bot.command()
@@ -62,6 +63,7 @@ async def registrar(ctx):
         return
     
     sb.registrar_usuario(user_id, user_name)
+    print(f"Usuário {user_name} registrado com ID {user_id}")
     await ctx.send(f"{user_name}, você foi registrado e recebeu 5000 moedas!")
 
 @bot.command()
@@ -158,7 +160,7 @@ async def apostar(ctx, time: str, valor: int):
     sb.registrar_aposta(user_id, match_id, time, valor, multiplicador)
 
     matches[match_id]['apostas'][time][user_id] = valor
-
+    print(f"Aposta registrada: {user_id} apostou {valor} no {time}")
     await ctx.send(f"Aposta de {valor} moedas registrada no {time}! Multiplicador: {round(multiplicador, 2)}x")
 
 @bot.command()
@@ -260,7 +262,7 @@ async def iniciar_partida(ctx, time1: str, time2: str):
         )
         
         embed.timestamp = datetime.datetime.now()
-        
+        print(f"Partida iniciada: {time1} vs {time2} (ID: {match_id})")
         await ctx.send(embed=embed)
     else:
         embed = nextcord.Embed(
@@ -293,7 +295,7 @@ async def finalizar_partida(ctx, match_id: int, vencedor: str):
             multiplicador = aposta['multiplicador']
             ganho = int(valor * multiplicador)
             sb.atualizar_saldo(user_id, sb.get_saldo(user_id) + ganho)
-        
+        print(f"Partida {match_id} finalizada! Vencedor: {vencedor}. Pagamentos realizados.")
         await ctx.send(f"O time {vencedor} venceu a partida {match_id}! Pagamentos realizados.")
     else:
         await ctx.send("Você não tem permissão para finalizar partidas.")
@@ -331,7 +333,7 @@ async def odds(ctx):
             ),
             inline=False
         )
-    
+    print("Odds exibidas")
     embed.set_footer(text="Use !apostar [time] [valor] para participar")
     await ctx.send(embed=embed)
 
@@ -366,7 +368,6 @@ async def minhas_apostas(ctx):
             value=f"Time: {aposta['time']}\nValor: {aposta['valor']} moedas\nOdd: {aposta['multiplicador']}x\nStatus: {status}",
             inline=False
         )
-    
     await ctx.send(embed=embed)
 
 @bot.command()
@@ -461,7 +462,7 @@ async def resgatar(ctx):
         inline=False
     )
     embed.set_footer(text="Volte amanhã para mais!")
-    
+    print(f"Resgate diário de {ctx.author.display_name} registrado.")
     await ctx.send(embed=embed)
 
 @bot.command()
