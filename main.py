@@ -11,6 +11,27 @@ sb = Database()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 matches = {}
+SERVER_ID = 1351221849261998141
+
+@bot.event
+async def on_guild_join(guild):
+    """Sai automaticamente de qualquer servidor que não seja o permitido"""
+    if guild.id != SERVER_ID:
+        await guild.leave()
+        print(f"Bot entrou em servidor não autorizado ({guild.id}) e saiu imediatamente")
+
+@bot.check
+async def global_check(ctx):
+    """Verificação CONSTANTE para todos os comandos"""
+    if not ctx.guild:
+        return True
+    
+    if ctx.guild.id != SERVER_ID:
+        await ctx.send("❌ Este bot funciona apenas no servidor específico!")
+        await ctx.guild.leave()  
+        return False
+    
+    return True
 
 @bot.event
 async def on_ready():
