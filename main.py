@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import nextcord
 from nextcord.ext import commands
@@ -503,7 +504,51 @@ async def on_command_error(ctx, error):
             await ctx.send(embed=embed, delete_after=10)
             await ctx.message.delete()
         return
-    
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def cancelar_partida(ctx, match_id: int):
+    # Verifica se a partida existe
+    partida = sb.sb.table("partidas").select("*").eq("id", match_id).execute().data
+    if not partida:
+        await ctx.send(f"Partida {match_id} não encontrada!")
+        return
+
+    # Confirmação segura
+    embed = nextcord.Embed(
+        title="⚠️ CONFIRMAR CANCELAMENTO",
+        description=f"Você está prestes a cancelar a partida {match_id}\nIsso devolverá todas as apostas!",
+        color=0xFF0000
+    )
+    embed.add_field(name="Times", value=f"{partida[0]['time1']} vs {partida[0]['time2']}")
+    embed.set_footer(text="Reaja com ✅ para confirmar ou ❌ para cancelar")
+
+    msg = await ctx.send(embed=embed)
+    await msg.add_reaction("✅")
+    await msg.add_reaction("❌")
+
+    # Espera confirmação
+    def check(reaction, user):
+        return user == ctx.author and str(reaction.emoji) in ["✅", "❌"]
+
+    try:
+        reaction, _ = await bot.wait_for("reaction_add", timeout=30.0, check=check)
+        
+        if str(reaction.emoji) == "✅":
+            if sb.cancelar_partida(match_id):
+                # Remove do dicionário se existir
+                if match_id in matches:
+                    del matches[match_id]
+                
+                await ctx.send(f"Partida {match_id} cancelada com sucesso! Todas as apostas foram devolvidas.")
+            else:
+                await ctx.send("Erro ao cancelar a partida. Verifique os logs.")
+        else:
+            await ctx.send("Cancelamento abortado.")
+
+    except asyncio.TimeoutError:
+        await ctx.send("Tempo de confirmação esgotado. Operação cancelada.")
+        
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 

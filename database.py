@@ -186,3 +186,22 @@ class Database:
         """Obtém o canal configurado para comandos"""
         config = self.sb.table("server_config").select("command_channel").eq("guild_id", guild_id).execute()
         return config.data[0]["command_channel"] if config.data else None
+    
+    def cancelar_partida(self, match_id: int):
+        """Cancela uma partida e devolve as apostas"""
+        try:
+            apostas = self.sb.table("apostas").select("*").eq("match_id", match_id).execute().data
+
+            for aposta in apostas:
+                saldo_atual = self.get_saldo(aposta["user_id"])
+                self.sb.table("usuarios").update({
+                    "saldo": saldo_atual + aposta["valor"]
+                }).eq("id", aposta["user_id"]).execute()
+
+            self.sb.table("apostas").delete().eq("match_id", match_id).execute()
+            self.sb.table("partidas").delete().eq("id", match_id).execute()
+
+            return True
+        except Exception as e:
+            print(f"Erro ao cancelar partida: {e}")
+            return False
